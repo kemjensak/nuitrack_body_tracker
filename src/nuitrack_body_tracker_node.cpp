@@ -26,11 +26,11 @@
 
 */
 
-#include "ros/ros.h"
-#include "std_msgs/String.h"
-#include "std_msgs/Int32.h"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include <sstream>
-#include "ros/console.h"
+// #include "ros/console.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -38,17 +38,17 @@
 #include <iostream>
 #include <iomanip>  // setprecision
 
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/Pose2D.h>
-#include <sensor_msgs/Image.h>
-#include <visualization_msgs/Marker.h>
-#include <body_tracker_msgs/BodyTracker.h>       // Publish custom message
-#include <body_tracker_msgs/BodyTrackerArray.h>  // Custom message, multiple people 
-#include <body_tracker_msgs/Skeleton.h>          // Publish custom message
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose2_d.hpp>>
+#include <sensor_msgs/msg/image.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <body_tracker_msgs/msg/body_tracker.hpp>       // Publish custom message
+#include <body_tracker_msgs/msg/body_tracker_array.hpp>  // Custom message, multiple people 
+#include <body_tracker_msgs/msg/skeleton.hpp>          // Publish custom message
 
 // If Camera mounted on Pan/Tilt head
 //#include "sensor_msgs/JointState.h"
-#include "dynamixel_msgs/JointState.h"
+// #include "dynamixel_msgs/JointState.h"
 
 //For Nuitrack SDK
 #include "nuitrack/Nuitrack.h"
@@ -60,8 +60,8 @@
 #include <boost/foreach.hpp>
 
 // For Point Cloud publishing
-#include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/point_cloud2_iterator.h>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 // #include <pcl/point_types.h>
 
 const bool ENABLE_PUBLISHING_FRAMES = true;
@@ -71,51 +71,52 @@ namespace nuitrack_body_tracker
   using namespace tdv::nuitrack;
   //namespace pt = boost::property_tree;
 
-  class nuitrack_body_tracker_node 
+  class nuitrack_body_tracker_node : public rclcpp::Node
   {
   public:
 
-    nuitrack_body_tracker_node(std::string name) :
+    nuitrack_body_tracker_node(std::string name) :Node("nuitrack_body_tracker_node"),
       _name(name)
     {
-      ROS_INFO("%s: Starting...", _name.c_str());
+      // ROS_INFO("%s: Starting...", _name.c_str());
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: Starting...", _name.c_str());
 
-      ros::NodeHandle nodeHandle("~");
-      nodeHandle.param<std::string>("camera_depth_frame",camera_depth_frame_,"camera_depth_frame");
-      nodeHandle.param<std::string>("camera_color_frame",camera_color_frame_,"camera_color_frame");
+      // nodeHandle.param<std::string>("camera_depth_frame",camera_depth_frame_,"camera_depth_frame");
+      // nodeHandle.param<std::string>("camera_color_frame",camera_color_frame_,"camera_color_frame");
 
       // Publishers and Subscribers
 
       // Publish tracked person in 2D and 3D
       // 2D: x,y in camera frame.   3D: x,y,z in world coordinates
-      body_tracking_position_pub_ = nh_.advertise<body_tracker_msgs::BodyTracker>
-        ("body_tracker/position", 1); 
+      body_tracking_position_pub_ = this->create_publisher<body_tracker_msgs::msg::BodyTracker>
+        ("body_tracker/position", 1);
 
-      body_tracking_array_pub_ =
-        nh_.advertise<body_tracker_msgs::BodyTrackerArray>
-        ("body_tracker_array/position", 1); 
+      body_tracking_array_pub_ = this->create_publisher<body_tracker_msgs::msg::BodyTrackerArray>
+        ("body_tracker_array/position", 1);
 
       // Publish tracked person upper body skeleton for advanced uses
-      body_tracking_skeleton_pub_ = nh_.advertise<body_tracker_msgs::Skeleton>
-        ("body_tracker/skeleton", 1);
+      body_tracking_skeleton_pub_ = this->create_publisher<body_tracker_msgs::msg::Skeleton>
+      ("body_tracker/skeleton", 1);
 
       // Publish markers to show where robot thinks person is in RViz
-      marker_pub_ = nh_.advertise<visualization_msgs::Marker>
+      marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>
         ("body_tracker/marker", 1);
 
       // Publish the depth frame for other nodes
-      depth_image_pub_ = nh_.advertise<sensor_msgs::Image>
+      depth_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>
         ("camera/depth/image", 1);
-      color_image_pub_ = nh_.advertise<sensor_msgs::Image>
+
+      color_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>
         ("camera/color/image", 1);
-      depth_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>
+
+      depth_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>
         ("camera/depth_cloud", 1);
 
     }
 
     ~nuitrack_body_tracker_node()
     {
-      ROS_INFO("nuitrack_body_tracker_node shutting down");
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "nuitrack_body_tracker_node shutting down");
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -145,11 +146,11 @@ namespace nuitrack_body_tracker
       sensor_msgs::PointCloud2Iterator<uint8_t> out_g(cloud_msg_, "g");
       sensor_msgs::PointCloud2Iterator<uint8_t> out_b(cloud_msg_, "b");
 
-      sensor_msgs::Image color_msg;
+      sensor_msgs::msg::Image color_msg;
 
       const tdv::nuitrack::Color3* colorPtr = frame->getData();
 
-      color_msg.header.stamp = ros::Time::now();
+      color_msg.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
       color_msg.header.frame_id = camera_color_frame_;
       color_msg.height = _height; 
       color_msg.width = _width;  
@@ -178,7 +179,7 @@ namespace nuitrack_body_tracker
       }
 
       // Publish color frame
-      color_image_pub_.publish(color_msg);
+      color_image_pub_->publish(color_msg);
      
     }
 
@@ -200,8 +201,8 @@ namespace nuitrack_body_tracker
 
 
       // Depth image message
-      sensor_msgs::Image depth_msg;
-      depth_msg.header.stamp = ros::Time::now();
+      sensor_msgs::msg::Image depth_msg;
+      depth_msg.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
       depth_msg.header.frame_id = camera_depth_frame_;
       depth_msg.height = _height; 
       depth_msg.width = _width; 
@@ -251,11 +252,11 @@ namespace nuitrack_body_tracker
       }
 
       // Publish depth frame
-      depth_image_pub_.publish(depth_msg);
+      depth_image_pub_->publish(depth_msg);
 
       // Publish colorized depth cloud
-      cloud_msg_.header.stamp = ros::Time::now();
-      depth_cloud_pub_.publish(cloud_msg_);
+      cloud_msg_.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+      depth_cloud_pub_->publish(cloud_msg_);
      
     }
 
@@ -270,9 +271,9 @@ namespace nuitrack_body_tracker
       // std::cout << "Nuitrack: onSkeletonUpdate callback" << std::endl;
 
       // Message for array of body detections
-      body_tracker_msgs::BodyTrackerArray  body_tracker_array_msg;
+      body_tracker_msgs::msg::BodyTrackerArray  body_tracker_array_msg;
       body_tracker_array_msg.header.frame_id = camera_depth_frame_;
-      ros::Time frame_time_stamp = ros::Time::now();
+      builtin_interfaces::msg::Time frame_time_stamp = rclcpp::Clock(RCL_ROS_TIME).now();
       body_tracker_array_msg.header.stamp = frame_time_stamp;
 
 //      body_tracker_msgs::BodyTrackerArray_ 
@@ -304,7 +305,7 @@ namespace nuitrack_body_tracker
 
         ///////////////////////////////////////////////////////////////
         // Position data in 2D and 3D for tracking people
-        body_tracker_msgs::BodyTracker person_data;
+        body_tracker_msgs::msg::BodyTracker person_data;
 //        body_tracker_msgs::BodyTracker_ <body_tracker_msgs::BodyTracker> person_data;
 
         person_data.body_id = skeleton.id;
@@ -321,7 +322,8 @@ namespace nuitrack_body_tracker
 
         //if(skeleton.id != last_id_)
         {
-          ROS_INFO("%s: detected person ID %d", _name.c_str(), skeleton.id);
+          // ROS_INFO("%s: detected person ID %d", _name.c_str(), skeleton.id);
+          RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: detected person ID %d", _name.c_str(), skeleton.id);
           last_id_ = skeleton.id;
         }
 
@@ -332,7 +334,7 @@ namespace nuitrack_body_tracker
 
         // Convert projection to radians
         // proj is 0.0 (left) --> 1.0 (right)
-        geometry_msgs::Pose2D track2d;
+        geometry_msgs::msg::Pose2D track2d;
         track2d.x = (skeleton.joints[KEY_JOINT_TO_TRACK].proj.x - 0.5) * ASTRA_MINI_FOV_X;
         track2d.y = (skeleton.joints[KEY_JOINT_TO_TRACK].proj.y - 0.5) * ASTRA_MINI_FOV_Y;
         track2d.theta = (float)skeleton.id;
@@ -514,7 +516,7 @@ namespace nuitrack_body_tracker
 
         ///////////////////////////////////////////////////////////////
         // Skeleton Data for publishing more detail
-        body_tracker_msgs::Skeleton_ <body_tracker_msgs::Skeleton> skeleton_data;
+        body_tracker_msgs::msg::Skeleton skeleton_data;
 
         // skeleton_data.frame_id = camera_depth_frame_;
         skeleton_data.body_id = skeleton.id;
@@ -610,8 +612,8 @@ namespace nuitrack_body_tracker
         // Publish custom position and skeleton messages for each person found
 
               
-        body_tracking_position_pub_.publish(person_data); // position data
-        body_tracking_skeleton_pub_.publish(skeleton_data); // full skeleton data
+        body_tracking_position_pub_->publish(person_data); // position data
+        body_tracking_skeleton_pub_->publish(skeleton_data); // full skeleton data
 
         // Msg with array of position data for each person detected
         body_tracker_array_msg.detected_list.push_back(person_data); 
@@ -651,7 +653,7 @@ namespace nuitrack_body_tracker
 
       ////////////////////////////////////////////////////
       // Publish custom array message with position info for all people found
-      body_tracking_array_pub_.publish(body_tracker_array_msg);
+      body_tracking_array_pub_->publish(body_tracker_array_msg);
     }
 
 
@@ -686,19 +688,19 @@ namespace nuitrack_body_tracker
       //if( id != 1)
       // printf ("DBG PublishMarker called for %f, %f, %f\n", x,y,z);
 
-      visualization_msgs::Marker marker;
+      visualization_msgs::msg::Marker marker;
       marker.header.frame_id = camera_depth_frame_;
-      marker.header.stamp = ros::Time::now();
-      marker.lifetime = ros::Duration(3.0); // seconds
+      marker.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+      marker.lifetime = rclcpp::Duration(3, 0);
       // Any marker sent with the same namespace and id will overwrite the old one
       marker.ns = _name;
       marker.id = id; // This must be id unique for each marker
 
-      uint32_t shape = visualization_msgs::Marker::SPHERE;
+      uint32_t shape = visualization_msgs::msg::Marker::SPHERE;
       marker.type = shape;
 
       // Set the marker action.  Options are ADD, DELETE, and DELETEALL
-      marker.action = visualization_msgs::Marker::ADD;
+      marker.action = visualization_msgs::msg::Marker::ADD;
       marker.color.r = color_r;
       marker.color.g = color_g; 
       marker.color.b = color_b;
@@ -717,7 +719,7 @@ namespace nuitrack_body_tracker
       marker.pose.position.z = z;
 
       // ROS_INFO("DBG: Publishing Marker");
-      marker_pub_.publish(marker);
+      marker_pub_->publish(marker);
 
     }
 
@@ -751,7 +753,7 @@ namespace nuitrack_body_tracker
     void Init(const std::string& config)
     {
       // Initialize Nuitrack first, then create Nuitrack modules
-      ROS_INFO("%s: Initializing...", _name.c_str());
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: Initializing...", _name.c_str());
       // std::cout << "Nuitrack: Initializing..." << std::endl;
 
       std::cout << 
@@ -817,7 +819,7 @@ namespace nuitrack_body_tracker
       OutputMode colorOutputMode = colorSensor_->getOutputMode();
       if ((colorOutputMode.xres != outputMode_.xres) || (colorOutputMode.yres != outputMode_.yres))
       {
-          ROS_WARN("%s: WARNING! DEPTH AND COLOR SIZE NOT THE SAME!", _name.c_str() );
+          RCLCPP_WARN(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: WARNING! DEPTH AND COLOR SIZE NOT THE SAME!", _name.c_str() );
       }
 
       // Use depth as the frame size
@@ -865,14 +867,14 @@ namespace nuitrack_body_tracker
       gestureRecognizer_->connectOnNewGestures(std::bind(
         &nuitrack_body_tracker_node::onNewGesture, this, std::placeholders::_1));
 
-      ROS_INFO("%s: Init complete.  Waiting for frames...", _name.c_str());
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: Init complete.  Waiting for frames...", _name.c_str());
 
     }
 
     void Run()
     {
       // Initialize Nuitrack first, then create Nuitrack modules
-      ROS_INFO("%s: Running...", _name.c_str());
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: Running...", _name.c_str());
       // std::cout << "Nuitrack: Running..." << std::endl;
       // Start Nuitrack
       try
@@ -886,11 +888,11 @@ namespace nuitrack_body_tracker
           return;
       }
 
-      ROS_INFO("%s: Waiting for person to be detected...", _name.c_str());
+      RCLCPP_INFO(rclcpp::get_logger("nuitrack_body_tracker_node"), "%s: Waiting for person to be detected...", _name.c_str());
 
       // Run Loop
-      ros::Rate r(30); // hz
-      while (ros::ok())
+      rclcpp::Rate r(30); // hz
+      while (rclcpp::ok())
       {
           // std::cout << "Nuitrack: Looping..." << std::endl;
 
@@ -912,7 +914,7 @@ namespace nuitrack_body_tracker
           }
 
           // std::cout << "Nuitrack: Sleeping..." << std::endl;
-          ros::spinOnce();
+          // rclcpp::spin_some(this->get_node_base_interface());
           r.sleep();
       }
 
@@ -934,22 +936,21 @@ namespace nuitrack_body_tracker
     /////////////// DATA MEMBERS /////////////////////
 
     std::string _name;
-    ros::NodeHandle nh_;
-    std::string camera_depth_frame_;
-    std::string camera_color_frame_;    
+    std::string camera_depth_frame_ = "nuitrack_camera_link";
+    std::string camera_color_frame_ = "nuitrack_camera_link";    
     int frame_width_, frame_height_;
     int last_id_;
-    sensor_msgs::PointCloud2 cloud_msg_; // color and depth point cloud
+    sensor_msgs::msg::PointCloud2 cloud_msg_; // color and depth point cloud
     int depth_frame_number_;
     int color_frame_number_;
     
-    ros::Publisher body_tracking_position_pub_;
-    ros::Publisher body_tracking_array_pub_;
-    ros::Publisher body_tracking_skeleton_pub_;
-    ros::Publisher marker_pub_;
-    ros::Publisher depth_image_pub_;
-    ros::Publisher color_image_pub_;
-    ros::Publisher depth_cloud_pub_;
+    rclcpp::Publisher<body_tracker_msgs::msg::BodyTracker>::SharedPtr body_tracking_position_pub_;
+    rclcpp::Publisher<body_tracker_msgs::msg::BodyTrackerArray>::SharedPtr body_tracking_array_pub_;
+    rclcpp::Publisher<body_tracker_msgs::msg::Skeleton>::SharedPtr body_tracking_skeleton_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr depth_image_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr color_image_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr depth_cloud_pub_;
 
     //ros::Publisher body_tracking_pose2d_pub_;
     //ros::Publisher body_tracking_pose3d_pub_;
@@ -979,8 +980,8 @@ namespace nuitrack_body_tracker
   int main( int argc, char *argv[] )
   {
     using namespace nuitrack_body_tracker;
-    ros::init( argc, argv, "nuitrack_body_tracker" );
-    nuitrack_body_tracker_node node(ros::this_node::getName());
+    rclcpp::init( argc, argv );
+    nuitrack_body_tracker_node node("nuitrack_body_tracker");
     node.Init("");
     node.Run();
 
